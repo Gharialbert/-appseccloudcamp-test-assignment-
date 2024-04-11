@@ -1,0 +1,99 @@
+package main
+
+import (
+    "database/sql"
+    "fmt"
+    "log"
+    "net/http"
+    "github.com/go-sql-driver/mysql"
+)
+
+var db *sql.DB
+var err error
+
+func initDB() {
+    db, err = sql.Open("mysql", "user:password@/dbname")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+err = db.Ping()
+if err != nil {
+    log.Fatal(err)
+    }
+}
+
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "GET" {
+        http.Error(w, "Method is not supported.", http.StatusNotFound)
+        return
+    }
+
+searchQuery := r.URL.Query().Get("query")
+if searchQuery == "" {
+    http.Error(w, "Query parameter is missing", http.StatusBadRequest)
+    return
+}
+
+query := fmt.Sprintf("SELECT * FROM products WHERE name LIKE '%%%s%%'", searchQuery)
+rows, err := db.Query(query)
+if err != nil {
+    http.Error(w, "Query failed", http.StatusInternalServerError)
+    log.Println(err)
+    return
+}
+defer rows.Close()
+
+var products []string
+for rows.Next() {
+    var name string
+    err := rows.Scan(&name)
+    if err != nil {
+        log.Fatal(err)
+    }
+    products = append(products, name)
+}
+
+fmt.Fprintf(w, "Found products: %v\n", products)
+}
+
+func main() {
+    initDB()
+    defer db.Close()
+
+http.HandleFunc("/search", searchHandler)
+fmt.Println("Server is running")
+log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+Уязвимости, присутствующие в коде:
+SQL-инъекция: код формирует SQL-запрос на основе пользовательского ввода без должного экранирования, что может привести к возможности выполнения произвольных SQL-команд.
+Отсутствие проверки наличия ошибок при сканировании строк из результата запроса: необработанные ошибки могут привести к возможности утечки конфиденциальной информации.
+Строки, в которых присутствуют уязвимости:
+
+Строка 28: формирование SQL-запроса с использованием пользовательского ввода без экранирования.
+Строка 35: необработанное сканирование строк из результата запроса.
+
+Последствия эксплуатации найденных уязвимостей:
+SQL-инъекция может привести к компрометации базы данных, к утечке конфиденциальной информации, к потере целостности данных и даже к удалению или изменению данных.
+Отсутствие проверки ошибок при сканировании строк может привести к панике или утечке конфиденциальной информации.
+
+Способы исправления уязвимостей:
+Для предотвращения SQL-инъекций следует использовать параметризованные запросы или экранировать пользовательский ввод.
+Для обработки ошибок при сканировании строк следует добавить соответствующие проверки и обработку ошибок.
+
+Выбор наилучшего способа исправления уязвимостей:
+Для предотвращения SQL-инъекций рекомендуется использовать параметризованные запросы, так как они являются более надежным и безопасным способом предотвращения SQL-инъекций. Это позволит избежать необходимости экранирования пользовательского ввода и снизить риск возникновения новых уязвимостей в будущем.
+Для обработки ошибок при сканировании строк следует добавить проверки на ошибки и обработать их соответствующим образом, чтобы избежать паники и утечек конфиденциальной информации.
+
+Исправленный код с использованием параметризованных запросов и обработкой ошибок при сканировании строк может выглядеть следующим образом:
+
+query := "SELECT * FROM products WHERE name LIKE ?"
+rows, err := db.Query(query, "%"+searchQuery+"%")
+if err != nil {
+    http.Error(w, "Query failed", http.StatusInternalServerError)
+    log.Println(err)
+    return
+}
+
+Такой подход безопаснее и более надежен, чем формирование запроса на основе пользовательского ввода.
